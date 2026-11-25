@@ -1,0 +1,350 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Пошаговая настройка личного прокси на Ubuntu с Hysteria 2 и sing-box. Команды для Linux, macOS и Windows.">
+  <title>Свой прокси с Hysteria 2 и sing-box</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="guide.js" defer></script>
+</head>
+<body>
+<a class="skip" href="#guide">К инструкции</a>
+<main class="article">
+  <article id="guide" tabindex="-1">
+    <header class="article-header">
+      <h1>Свой прокси с Hysteria 2 и sing-box</h1>
+      <p>Один сервер Ubuntu и клиенты для Linux, macOS и Windows. Настроим подключение по UDP с проверкой TLS и раздельной маршрутизацией.</p>
+      <div class="os-picker" hidden>
+        <span id="os-label">Команды для</span>
+        <div class="os-options" role="group" aria-labelledby="os-label">
+          <button type="button" data-platform="linux" aria-pressed="false">Linux</button>
+          <button type="button" data-platform="macos" aria-pressed="false">macOS</button>
+          <button type="button" data-platform="windows" aria-pressed="false">Windows</button>
+        </div>
+      </div>
+    </header>
+    <nav class="toc" aria-label="Оглавление">
+      <a href="#vps">VPS и SSH</a>
+      <a href="#server-setup">Сервер</a>
+      <a href="#client">Клиент</a>
+      <a href="#config">Конфигурация</a>
+      <a href="#run">Проверка</a>
+      <a href="#maintenance">Диагностика и перенос</a>
+    </nav>
+
+    <section id="vps">
+      <h2>VPS и SSH</h2>
+      <p>На компьютере sing-box принимает трафик через виртуальный интерфейс TUN. Подключения к локальным адресам идут напрямую. При включённом правиле для <code>.ru</code>, <code>.su</code> и <code>.рф</code> трафик к распознанным доменам этих зон тоже идёт напрямую. Остальной трафик направляется через VPS по Hysteria 2.</p>
+      <p>Для начала подойдёт VPS с Ubuntu 24.04 LTS, 1 vCPU и 1 ГиБ памяти, например у HostVDS. Уточните условия тарифа, наличие публичного IPv4, лимит трафика и возможность входящих подключений по UDP 443. Для этой схемы покупать домен необязательно.</p>
+      <h3>Подготовьте ключ</h3>
+      <p>Откройте терминал или PowerShell и проверьте наличие SSH.</p>
+      <pre><code>ssh -V</code></pre>
+      <div data-os="linux"><p>На Debian и Ubuntu, если команды нет, установите клиент OpenSSH.</p><pre><code>sudo apt update
+sudo apt install openssh-client</code></pre></div>
+      <div data-os="windows"><p>На Windows, если команды нет, установите OpenSSH Client в PowerShell от имени администратора.</p><pre><code>Add-WindowsCapability -Online -Name OpenSSH.Client~~~~0.0.1.0</code></pre></div>
+      <p>Если у вас ещё нет ключа Ed25519, создайте его. При запросе имени файла можно оставить стандартный путь, если он свободен. Если файл уже существует, используйте существующий ключ или выберите другое имя. Для нового ключа задайте парольную фразу.</p>
+      <pre><code>ssh-keygen -t ed25519 -C "proxy-vps"</code></pre>
+      <p>Выведите публичный ключ и скопируйте всю строку в панель управления VPS. Если имя файла отличается от стандартного, подставьте своё. Храните файл без <code>.pub</code> у себя на компьютере.</p>
+      <div data-os="linux"><h4>Linux</h4><pre><code>cat ~/.ssh/id_ed25519.pub</code></pre></div>
+      <div data-os="macos"><h4>macOS</h4><pre><code>pbcopy &lt; ~/.ssh/id_ed25519.pub</code></pre></div>
+      <div data-os="windows"><h4>Windows · PowerShell</h4><pre><code>Get-Content "$HOME\.ssh\id_ed25519.pub" | Set-Clipboard</code></pre></div>
+      <h3>Создайте VPS и подключитесь</h3>
+      <p>В панели хостинга создайте сервер с Ubuntu 24.04 LTS и выберите добавленный публичный ключ. Узнайте IPv4 и имя пользователя в панели хостинга. Здесь <code>SERVER_IP</code> обозначает ваш адрес, а команды рассчитаны на вход под <code>root</code>. Для образа с другим пользователем укажите его при входе и выполните <code>sudo -i</code> перед настройкой сервера.</p>
+      <pre><code>ssh root@SERVER_IP</code></pre>
+      <p>Перед подтверждением первого подключения сверьте отпечаток через консоль хостинга. Например, в консоли VPS можно вывести отпечаток ключа хоста Ed25519.</p>
+      <pre><code>ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub</code></pre>
+    </section>
+
+    <section id="server-setup">
+      <h2>Сервер Hysteria 2</h2>
+      <p class="note">Команды этого раздела выполняются на VPS в SSH-сессии с правами root.</p>
+      <h3>Установите Hysteria 2</h3>
+      <pre><code>apt update
+apt upgrade
+apt install curl openssl nano ca-certificates ufw
+curl -fsSL https://get.hy2.sh/ -o /tmp/hysteria-install.sh
+less /tmp/hysteria-install.sh</code></pre>
+      <p>После просмотра нажмите <kbd>Q</kbd>, запустите установщик и проверьте пользователя и группу службы.</p>
+      <pre><code>HYSTERIA_USER=hysteria bash /tmp/hysteria-install.sh
+hysteria version
+systemctl show hysteria-server -p User -p Group
+id hysteria</code></pre>
+      <h3>Создайте два пароля и сертификат</h3>
+      <p>Первая строка — пароль авторизации, вторая — пароль Salamander. Сохраните их в менеджере паролей. Сертификат <code>server.crt</code> понадобится на каждом клиенте.</p>
+      <pre><code>openssl rand -hex 32
+openssl rand -hex 32</code></pre>
+      <pre><code>umask 077
+openssl req -x509 -nodes -newkey ec \
+  -pkeyopt ec_paramgen_curve:P-256 \
+  -keyout /etc/hysteria/server.key \
+  -out /etc/hysteria/server.crt \
+  -days 365 \
+  -subj "/CN=proxy.internal" \
+  -addext "subjectAltName=DNS:proxy.internal"</code></pre>
+      <p>Создавайте сертификат на новом сервере. При замене сертификата на действующем VPS обновите <code>server.crt</code> на клиентах, иначе проверка TLS перестанет проходить. <code>proxy.internal</code> используется как имя в сертификате, поэтому создавать DNS-запись для него не требуется.</p>
+      <h3>Настройте службу</h3>
+      <p>Выполните <code>nano /etc/hysteria/config.yaml</code>, вставьте конфигурацию и замените значения паролей. В nano сохраните файл сочетанием <kbd>Ctrl</kbd>+<kbd>O</kbd>, затем нажмите <kbd>Enter</kbd> и <kbd>Ctrl</kbd>+<kbd>X</kbd>.</p>
+      <pre><code>listen: :443
+
+tls:
+  cert: /etc/hysteria/server.crt
+  key: /etc/hysteria/server.key
+
+auth:
+  type: password
+  password: "AUTH_PASSWORD"
+
+obfs:
+  type: salamander
+  salamander:
+    password: "OBFS_PASSWORD"</code></pre>
+      <p>Дайте службе доступ на чтение конфигурации и TLS-ключа. Команды рассчитаны на пользователя <code>hysteria</code> и его одноимённую группу. Если у службы задана другая группа, используйте её. <code>server.crt</code> можно читать без доступа к приватному ключу.</p>
+      <pre><code>chown root:hysteria /etc/hysteria/config.yaml /etc/hysteria/server.key
+chmod 640 /etc/hysteria/config.yaml /etc/hysteria/server.key
+chown root:root /etc/hysteria/server.crt
+chmod 644 /etc/hysteria/server.crt</code></pre>
+      <h3>Откройте порты и запустите сервер</h3>
+      <p>Добавьте правила в UFW и, если есть отдельный экран в панели хостинга, там тоже. Перед включением UFW убедитесь, что разрешили фактический порт SSH. Здесь используется стандартный TCP 22.</p>
+      <pre><code>ufw allow 22/tcp
+ufw allow 443/udp
+ufw enable
+ufw status
+systemctl enable hysteria-server
+systemctl restart hysteria-server
+systemctl status hysteria-server --no-pager
+ss -lunp 'sport = :443'</code></pre>
+      <p>Ожидаемый результат — <code>active (running)</code> и UDP-сокет на порту 443. Проверьте вход SSH из второго терминала и затем завершите первую сессию командой <code>exit</code>.</p>
+    </section>
+
+    <section id="client">
+      <h2>Клиент sing-box</h2>
+      <p>Установите актуальную стабильную версию sing-box. Шаблон использует формат DNS, доступный с версии 1.12. Примеры ниже проверены командой <code>sing-box check</code> в версии 1.14.4.</p>
+      <div data-os="linux">
+        <h3>Linux</h3>
+        <p>Для Debian, Ubuntu, Fedora и Arch Linux можно скачать официальный установщик. Откройте скрипт через <code>less</code>, проверьте содержимое и нажмите <kbd>Q</kbd> перед запуском. Для других способов установки выберите свой дистрибутив в документации. <a href="https://sing-box.sagernet.org/installation/package-manager/">Установка sing-box</a>.</p>
+        <pre><code>curl -fsSL https://sing-box.app/install.sh -o sing-box-install.sh
+less sing-box-install.sh
+sh sing-box-install.sh
+sing-box version</code></pre>
+      </div>
+      <div data-os="macos">
+        <h3>macOS</h3>
+        <p>Если установлен Homebrew, воспользуйтесь им. Архивы для Apple Silicon и Intel также есть на странице релизов. <a href="https://github.com/SagerNet/sing-box/releases">Релизы sing-box</a>.</p>
+        <pre><code>brew install sing-box
+sing-box version</code></pre>
+      </div>
+      <div data-os="windows">
+        <h3>Windows · PowerShell</h3>
+        <p>Установите через WinGet. Если он недоступен, скачайте архив Windows для своей архитектуры, распакуйте и поместите <code>sing-box.exe</code> рядом с будущим <code>config.json</code>. Для архива используйте <code>.\sing-box.exe</code> вместо <code>sing-box</code> во всех командах. <a href="https://github.com/SagerNet/sing-box/releases">Релизы sing-box</a>.</p>
+        <pre><code>winget install sing-box
+sing-box version</code></pre>
+      </div>
+      <h3>Скачайте публичный сертификат</h3>
+      <p>В локальном терминале подставьте адрес VPS. Если SSH настроен с отдельным ключом, добавьте <code>-i ПУТЬ_К_КЛЮЧУ</code> после <code>scp</code>. При входе под обычным пользователем подставьте его имя вместо <code>root</code>. Приватный <code>server.key</code> остаётся на VPS.</p>
+      <div data-os="linux macos"><h4>Linux и macOS</h4><pre><code>mkdir -p "$HOME/.config/sing-box"
+cd "$HOME/.config/sing-box"
+scp root@SERVER_IP:/etc/hysteria/server.crt ./server.crt</code></pre></div>
+      <div data-os="windows"><h4>Windows · PowerShell</h4><pre><code>New-Item -ItemType Directory -Force "$HOME\sing-box" | Out-Null
+Set-Location "$HOME\sing-box"
+scp root@SERVER_IP:/etc/hysteria/server.crt ./server.crt</code></pre></div>
+    </section>
+
+    <section id="config" aria-labelledby="config-heading">
+      <h2 id="config-heading">Конфигурация клиента</h2>
+      <p>Сохраните результат как <code>config.json</code> в той же папке, что и <code>server.crt</code>. Одинаковый JSON подходит для трёх ОС: имя интерфейса TUN выбирается автоматически.</p>
+      <form class="generator" id="generator" autocomplete="off" aria-label="Генератор полного config.json" hidden>
+        <div class="fields">
+          <label for="server">IPv4 сервера<input id="server" data-field="server" placeholder="203.0.113.10" inputmode="decimal" spellcheck="false"></label>
+          <label for="auth">Пароль авторизации<input id="auth" data-field="auth" type="password" placeholder="AUTH_PASSWORD" autocomplete="new-password"></label>
+          <label for="obfs">Пароль Salamander<input id="obfs" data-field="obfs" type="password" placeholder="OBFS_PASSWORD" autocomplete="new-password"></label>
+        </div>
+        <p>Поля можно оставить пустыми и заменить подстановки в сохранённом файле. Введённые значения обрабатываются только на этой странице.</p>
+        <label><input id="bypass" type="checkbox" checked> Открывать домены .ru, .su и .рф напрямую</label>
+        <label><input id="block-quic" type="checkbox"> Отклонять UDP 80/443 приложений, кроме трафика, уже направленного напрямую</label>
+        <p>Блокировка UDP может заставить браузер перейти с HTTP/3 на TCP. Он также может повлиять на другие приложения, использующие эти UDP-порты. Само подключение к Hysteria 2 использует UDP 443.</p>
+        <label for="config-output">Содержимое config.json</label>
+        <textarea id="config-output" rows="12" readonly spellcheck="false"></textarea>
+        <button id="copy-config" type="button">Копировать полный config.json</button>
+        <span class="status" role="status"></span>
+      </form>
+      <details id="template">
+        <summary>Открыть шаблон JSON</summary>
+        <p>Замените <code>203.0.113.10</code>, <code>AUTH_PASSWORD</code> и <code>OBFS_PASSWORD</code>. Адрес в примере зарезервирован для документации. Закрытые пароли хранятся в локальном JSON, ограничьте доступ к файлу своей учётной записью.</p>
+<pre><code id="base-config">{
+  &quot;log&quot;: {
+    &quot;level&quot;: &quot;info&quot;
+  },
+  &quot;dns&quot;: {
+    &quot;servers&quot;: [
+      {
+        &quot;type&quot;: &quot;local&quot;,
+        &quot;tag&quot;: &quot;local&quot;
+      },
+      {
+        &quot;type&quot;: &quot;https&quot;,
+        &quot;tag&quot;: &quot;remote&quot;,
+        &quot;server&quot;: &quot;cloudflare-dns.com&quot;,
+        &quot;domain_resolver&quot;: &quot;local&quot;,
+        &quot;detour&quot;: &quot;hy2&quot;
+      },
+      {
+        &quot;type&quot;: &quot;fakeip&quot;,
+        &quot;tag&quot;: &quot;fakeip&quot;,
+        &quot;inet4_range&quot;: &quot;198.18.0.0/15&quot;,
+        &quot;inet6_range&quot;: &quot;fc00::/18&quot;
+      }
+    ],
+    &quot;rules&quot;: [
+      {
+        &quot;domain_suffix&quot;: [
+          &quot;.ru&quot;,
+          &quot;.su&quot;,
+          &quot;.xn--p1ai&quot;
+        ],
+        &quot;action&quot;: &quot;route&quot;,
+        &quot;server&quot;: &quot;local&quot;
+      },
+      {
+        &quot;query_type&quot;: [
+          &quot;A&quot;,
+          &quot;AAAA&quot;
+        ],
+        &quot;action&quot;: &quot;route&quot;,
+        &quot;server&quot;: &quot;fakeip&quot;
+      }
+    ],
+    &quot;final&quot;: &quot;remote&quot;,
+    &quot;reverse_mapping&quot;: true
+  },
+  &quot;inbounds&quot;: [
+    {
+      &quot;type&quot;: &quot;tun&quot;,
+      &quot;tag&quot;: &quot;tun-in&quot;,
+      &quot;address&quot;: [
+        &quot;172.19.0.1/30&quot;,
+        &quot;fdfe:dcba:9876::1/126&quot;
+      ],
+      &quot;auto_route&quot;: true,
+      &quot;strict_route&quot;: true
+    }
+  ],
+  &quot;outbounds&quot;: [
+    {
+      &quot;type&quot;: &quot;hysteria2&quot;,
+      &quot;tag&quot;: &quot;hy2&quot;,
+      &quot;server&quot;: &quot;203.0.113.10&quot;,
+      &quot;server_port&quot;: 443,
+      &quot;password&quot;: &quot;AUTH_PASSWORD&quot;,
+      &quot;obfs&quot;: {
+        &quot;type&quot;: &quot;salamander&quot;,
+        &quot;password&quot;: &quot;OBFS_PASSWORD&quot;
+      },
+      &quot;tls&quot;: {
+        &quot;enabled&quot;: true,
+        &quot;server_name&quot;: &quot;proxy.internal&quot;,
+        &quot;certificate_path&quot;: &quot;server.crt&quot;
+      }
+    },
+    {
+      &quot;type&quot;: &quot;direct&quot;,
+      &quot;tag&quot;: &quot;direct&quot;
+    }
+  ],
+  &quot;route&quot;: {
+    &quot;rules&quot;: [
+      {
+        &quot;action&quot;: &quot;sniff&quot;
+      },
+      {
+        &quot;protocol&quot;: &quot;dns&quot;,
+        &quot;action&quot;: &quot;hijack-dns&quot;
+      },
+      {
+        &quot;ip_is_private&quot;: true,
+        &quot;action&quot;: &quot;route&quot;,
+        &quot;outbound&quot;: &quot;direct&quot;
+      },
+      {
+        &quot;domain_suffix&quot;: [
+          &quot;.ru&quot;,
+          &quot;.su&quot;,
+          &quot;.xn--p1ai&quot;
+        ],
+        &quot;action&quot;: &quot;route&quot;,
+        &quot;outbound&quot;: &quot;direct&quot;
+      }
+    ],
+    &quot;auto_detect_interface&quot;: true,
+    &quot;default_domain_resolver&quot;: &quot;local&quot;,
+    &quot;final&quot;: &quot;hy2&quot;
+  }
+}</code></pre>
+</details>
+
+      <p class="note">В шаблоне sing-box использует локальный DNS для доменов прямого маршрута. Для остальных запросов A и AAAA он выдаёт временные адреса FakeIP и восстанавливает исходный домен при подключении. Другие DNS-запросы по умолчанию идут через прокси. Раздельная маршрутизация зависит от того, видит ли sing-box домен. Собственный DNS в приложении, кеш или обращение по IP могут повлиять на выбор маршрута.</p>
+    </section>
+
+    <section id="run">
+      <h2>Запуск и проверка</h2>
+      <p>Остановите другой VPN, если он тоже управляет TUN. Перейдите в папку конфигурации перед запуском — от неё отсчитывается путь к <code>server.crt</code>. Для создания TUN нужны права администратора.</p>
+      <div data-os="linux macos"><h3>Linux и macOS</h3><pre><code>cd "$HOME/.config/sing-box"
+chmod 600 config.json
+sing-box check -c config.json
+sudo "$(command -v sing-box)" run -c config.json</code></pre></div>
+      <div data-os="windows"><h3>Windows · PowerShell от имени администратора</h3><pre><code>Set-Location "$HOME\sing-box"
+sing-box check -c config.json
+sing-box run -c config.json</code></pre></div>
+      <p>Оставьте терминал открытым. Чтобы остановить прокси, нажмите <kbd>Ctrl</kbd>+<kbd>C</kbd>. При следующем запуске снова перейдите в папку и выполните команду <code>run</code>.</p>
+      <p>Сравните внешний IP до и после запуска на сайте вне доменов прямого маршрута. После запуска он должен совпадать с адресом выхода VPS. Отдельно откройте домен с суффиксом <code>.ru</code> и посмотрите в журнале клиента, выбрался ли исходящий маршрут <code>direct</code>. <a href="https://ipinfo.io/">Проверить внешний IP</a>.</p>
+    </section>
+
+    <section id="maintenance">
+      <h2>Диагностика и перенос VPS</h2>
+      <dl>
+        <dt>Тайм-аут или ошибка QUIC</dt><dd>Проверьте IPv4, состояние службы и правила для UDP 443 на сервере и у хостера. Сверьте пароль Salamander с конфигурацией клиента. Проверьте, проходит ли UDP из клиентской сети.</dd>
+        <dt>Ошибка авторизации</dt><dd>Сверьте <code>auth.password</code> на сервере с <code>password</code> в исходящем подключении клиента.</dd>
+        <dt>Ошибка <code>x509</code></dt><dd>Проверьте срок действия сертификата, имя <code>proxy.internal</code>, время на обоих устройствах и наличие актуального файла <code>server.crt</code> рядом с JSON.</dd>
+        <dt>Ошибка TUN или пропал интернет</dt><dd>Остановите клиент, проверьте права администратора и отключите второй VPN. В Windows параметр <code>strict_route</code> может влиять на работу приложений вроде VirtualBox. Подробности ограничений есть в документации. <a href="https://sing-box.sagernet.org/configuration/inbound/tun/">Параметры TUN</a>.</dd>
+        <dt>Ошибка <code>unknown field</code></dt><dd>Проверьте версию клиента и повторите <code>sing-box check -c config.json</code> в папке конфигурации.</dd>
+      </dl>
+      <pre><code>systemctl status hysteria-server --no-pager
+ss -lunp 'sport = :443'
+journalctl -u hysteria-server -n 50 --no-pager</code></pre>
+      <h3>Перенос сервера</h3>
+      <p>Сохраните зашифрованную копию <code>/etc/hysteria/config.yaml</code>, <code>server.crt</code> и <code>server.key</code>. На новом VPS установите Hysteria 2, восстановите файлы и права, откройте UDP 443 и запустите службу. Если сертификат остаётся действующим, а порт и пароли те же, на каждом клиенте достаточно заменить адрес в <code>server</code>. Проверьте новый сервер с одного клиента, прежде чем завершать работу старого.</p>
+      <div id="connection-generator" hidden>
+        <h3 id="connection-heading">Блок подключения для существующего конфига</h3>
+        <p>При переносе VPS замените объект с тегом <code>hy2</code> в массиве <code>outbounds</code>. Оставьте <code>proxy.internal</code>, если перенесли сертификат из этой статьи. Другое имя должно совпадать с именем в сертификате. Держите актуальный <code>server.crt</code> рядом с конфигом.</p>
+        <form class="generator" autocomplete="off" aria-labelledby="connection-heading">
+          <div class="fields">
+            <label for="connection-server">IP или домен VPS<input id="connection-server" data-field="server" placeholder="203.0.113.10" spellcheck="false"></label>
+            <label for="connection-port">Порт<input id="connection-port" data-field="port" type="number" min="1" max="65535" step="1" value="443"></label>
+            <label for="connection-auth">Пароль авторизации<input id="connection-auth" data-field="auth" type="password" placeholder="AUTH_PASSWORD" autocomplete="new-password"></label>
+            <label for="connection-obfs">Пароль Salamander<input id="connection-obfs" data-field="obfs" type="password" placeholder="OBFS_PASSWORD" autocomplete="new-password"></label>
+            <label for="connection-sni">Имя TLS (SNI)<input id="connection-sni" data-field="sni" placeholder="proxy.internal" spellcheck="false"></label>
+          </div>
+          <label for="connection-output">Блок подключения JSON</label>
+          <textarea id="connection-output" rows="10" readonly spellcheck="false"></textarea>
+          <button type="button">Копировать блок JSON</button>
+          <span class="status" role="status"></span>
+        </form>
+      </div>
+      <h3>Дополнительные устройства</h3>
+      <p>Установите sing-box на каждом устройстве и перенесите <code>config.json</code> и публичный <code>server.crt</code> защищённым способом. Лимит трафика VPS общий для всех устройств.</p>
+    </section>
+
+  </article>
+</main>
+<footer class="article">
+  <h2>Документация</h2>
+  <ul>
+    <li><a href="https://v2.hysteria.network/docs/getting-started/Server-Installation-Script/">Hysteria 2 · установка сервера</a></li>
+    <li><a href="https://v2.hysteria.network/docs/advanced/Full-Server-Config/">Hysteria 2 · конфигурация сервера</a></li>
+    <li><a href="https://sing-box.sagernet.org/configuration/outbound/hysteria2/">sing-box · Hysteria 2</a></li>
+    <li><a href="https://sing-box.sagernet.org/configuration/shared/tls/">sing-box · TLS</a></li>
+    <li><a href="https://sing-box.sagernet.org/configuration/dns/server/fakeip/">sing-box · FakeIP</a></li>
+  </ul>
+</footer>
+</body>
+</html>

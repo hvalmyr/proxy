@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Пошаговая настройка личного прокси на Ubuntu с Hysteria 2 и sing-box. Команды для Linux, macOS и Windows.">
+  <meta name="description" content="Пошаговая настройка личного прокси на Ubuntu с Hysteria 2 и sing-box. Команды для Linux, macOS, Windows, Android, iOS и iPadOS.">
   <title>Свой прокси с Hysteria 2 и sing-box</title>
   <link rel="stylesheet" href="style.css">
   <script src="guide.js" defer></script>
@@ -14,45 +14,42 @@
   <article id="guide" tabindex="-1">
     <header class="article-header">
       <h1>Свой прокси с Hysteria 2 и sing-box</h1>
-      <p>Один сервер Ubuntu и клиенты для Linux, macOS и Windows. Настроим подключение по UDP с проверкой TLS и раздельной маршрутизацией.</p>
+      <p>Прокси — это посредник между вашим устройством и сайтами. Hysteria 2 работает на арендованном компьютере, а sing-box — программа на вашем компьютере или телефоне, которая подключается к нему. Руководство подходит для Linux, macOS, Windows, Android, iOS и iPadOS.</p>
       <div class="os-picker" hidden>
         <span id="os-label">Команды для</span>
         <div class="os-options" role="group" aria-labelledby="os-label">
           <button type="button" data-platform="linux" aria-pressed="false">Linux</button>
           <button type="button" data-platform="macos" aria-pressed="false">macOS</button>
           <button type="button" data-platform="windows" aria-pressed="false">Windows</button>
+          <button type="button" data-platform="android" aria-pressed="false">Android</button>
+          <button type="button" data-platform="ios" aria-pressed="false">iPhone и iPad</button>
         </div>
       </div>
+      <p>Уже есть файл настроек для телефона? Перейдите к подключению <a href="#android-import" data-switch-platform="android">Android</a> или <a href="#ios-import" data-switch-platform="ios">iPhone и iPad</a>. Если сервера ещё нет, начните с первого раздела.</p>
     </header>
-    <nav class="toc" aria-label="Оглавление">
-      <a href="#vps">VPS и SSH</a>
-      <a href="#server-setup">Сервер</a>
-      <a href="#client">Клиент</a>
-      <a href="#config">Конфигурация</a>
-      <a href="#run">Проверка</a>
-      <a href="#maintenance">Диагностика и перенос</a>
-    </nav>
-
     <section id="vps">
-      <h2>VPS и SSH</h2>
-      <p>На компьютере sing-box принимает трафик через виртуальный интерфейс TUN. Подключения к локальным адресам идут напрямую. При включённом правиле для <code>.ru</code>, <code>.su</code> и <code>.рф</code> трафик к распознанным доменам этих зон тоже идёт напрямую. Остальной трафик направляется через VPS по Hysteria 2.</p>
-      <p>Для начала подойдёт VPS с Ubuntu 24.04 LTS, 1 vCPU и 1 ГиБ памяти, например у HostVDS. Уточните условия тарифа, наличие публичного IPv4, лимит трафика и возможность входящих подключений по UDP 443. Для этой схемы покупать домен необязательно.</p>
+      <h2>Арендуйте сервер и подключитесь</h2>
+      <p>VPS — небольшой компьютер в интернете, который вы арендуете у хостинга. Ubuntu — операционная система для этого компьютера. Когда сайт открывается через прокси, он видит адрес сервера.</p>
+      <p>Для примера возьмём <a href="https://hostvds.com/">hostvds.com</a>. Подойдёт и любой другой хостинг, где можно арендовать сервер с Ubuntu, получить публичный IPv4 и открыть UDP 443.</p>
+      <p>В панели хостинга выберите Ubuntu 24.04 LTS и самый простой тариф с 1 ядром и 1 ГБ памяти. Перед оплатой напишите в поддержку: «Будет ли у моего сервера собственный публичный IPv4? Открыт ли входящий UDP на порту 443 или я могу открыть его сам? Сколько гигабайт в месяц включено?»</p>
+      <p>Публичный IPv4 — адрес, по которому сервер можно найти из интернета. UDP — способ передачи данных, а 443 — номер входа на сервере, которым пользуется Hysteria 2. Если хостер блокирует этот вход, выберите другой тариф или хостинг. Покупать имя сайта для этой инструкции не нужно.</p>
+      <p>У HostVDS на базовом тарифе HostVDS 1 скорость подключения сервера — до 50 Мбит/с. При создании сервера можно за доплату около 0,50 доллара в месяц выбрать опцию <strong>Unlimited Shared 100 Mbit/s</strong>. С ней нет лимита на объём переданных данных, а скорость подключения сервера — до 100 Мбит/с, вдвое выше базовой. Это предел подключения сервера. Фактическая скорость у вас может быть ниже.</p>
       <h3>Подготовьте ключ</h3>
-      <p>Откройте терминал или PowerShell и проверьте наличие SSH.</p>
+      <p>SSH позволяет управлять арендованным сервером с вашего компьютера. На Mac откройте «Терминал» через Spotlight, на Linux найдите «Терминал» в меню, на Windows — PowerShell в меню «Пуск». Вставьте команду и нажмите Enter. Если в ответ появится номер версии, можно идти дальше.</p>
       <pre><code>ssh -V</code></pre>
       <div data-os="linux"><p>На Debian и Ubuntu, если команды нет, установите клиент OpenSSH.</p><pre><code>sudo apt update
 sudo apt install openssh-client</code></pre></div>
       <div data-os="windows"><p>На Windows, если команды нет, установите OpenSSH Client в PowerShell от имени администратора.</p><pre><code>Add-WindowsCapability -Online -Name OpenSSH.Client~~~~0.0.1.0</code></pre></div>
-      <p>Если у вас ещё нет ключа Ed25519, создайте его. При запросе имени файла можно оставить стандартный путь, если он свободен. Если файл уже существует, используйте существующий ключ или выберите другое имя. Для нового ключа задайте парольную фразу.</p>
+      <p>Ключ SSH — пара файлов для входа на сервер. Следующая команда создаёт такую пару в формате Ed25519. При запросе имени файла можно оставить стандартный путь, если он свободен. Если файл уже существует, используйте существующий ключ или выберите другое имя. Для нового ключа задайте парольную фразу.</p>
       <pre><code>ssh-keygen -t ed25519 -C "proxy-vps"</code></pre>
-      <p>Выведите публичный ключ и скопируйте всю строку в панель управления VPS. Если имя файла отличается от стандартного, подставьте своё. Храните файл без <code>.pub</code> у себя на компьютере.</p>
+      <p>Выведите публичный ключ и скопируйте всю строку в панель управления VPS. Если имя файла отличается от стандартного, подставьте своё. Файл с <code>.pub</code> можно отдать хостингу. Файл без <code>.pub</code> — ваш личный ключ, храните его у себя.</p>
       <div data-os="linux"><h4>Linux</h4><pre><code>cat ~/.ssh/id_ed25519.pub</code></pre></div>
       <div data-os="macos"><h4>macOS</h4><pre><code>pbcopy &lt; ~/.ssh/id_ed25519.pub</code></pre></div>
       <div data-os="windows"><h4>Windows · PowerShell</h4><pre><code>Get-Content "$HOME\.ssh\id_ed25519.pub" | Set-Clipboard</code></pre></div>
       <h3>Создайте VPS и подключитесь</h3>
-      <p>В панели хостинга создайте сервер с Ubuntu 24.04 LTS и выберите добавленный публичный ключ. Узнайте IPv4 и имя пользователя в панели хостинга. Здесь <code>SERVER_IP</code> обозначает ваш адрес, а команды рассчитаны на вход под <code>root</code>. Для образа с другим пользователем укажите его при входе и выполните <code>sudo -i</code> перед настройкой сервера.</p>
+      <p>В панели хостинга создайте сервер с Ubuntu 24.04 LTS и выберите добавленный публичный ключ. Узнайте IPv4 и имя пользователя в панели хостинга. Здесь <code>SERVER_IP</code> обозначает ваш адрес, а команды рассчитаны на вход под <code>root</code> — администратором сервера. Для образа с другим пользователем укажите его при входе и выполните <code>sudo -i</code> перед настройкой сервера.</p>
       <pre><code>ssh root@SERVER_IP</code></pre>
-      <p>Перед подтверждением первого подключения сверьте отпечаток через консоль хостинга. Например, в консоли VPS можно вывести отпечаток ключа хоста Ed25519.</p>
+      <p>При первом входе SSH покажет отпечаток — короткий код, по которому можно узнать сервер. Откройте консоль сервера в панели хостинга и выполните команду ниже. Подтвердите вход, если коды совпадают.</p>
       <pre><code>ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub</code></pre>
     </section>
 
@@ -71,7 +68,7 @@ hysteria version
 systemctl show hysteria-server -p User -p Group
 id hysteria</code></pre>
       <h3>Создайте два пароля и сертификат</h3>
-      <p>Первая строка — пароль авторизации, вторая — пароль Salamander. Сохраните их в менеджере паролей. Сертификат <code>server.crt</code> понадобится на каждом клиенте.</p>
+      <p>Две команды ниже создадут по одному паролю. Первый даёт устройству право подключиться. Второй нужен Salamander — функции, которая меняет вид данных при передаче. Сохраните их в менеджере паролей. Сертификат <code>server.crt</code> понадобится на каждом клиенте.</p>
       <pre><code>openssl rand -hex 32
 openssl rand -hex 32</code></pre>
       <pre><code>umask 077
@@ -82,9 +79,9 @@ openssl req -x509 -nodes -newkey ec \
   -days 365 \
   -subj "/CN=proxy.internal" \
   -addext "subjectAltName=DNS:proxy.internal"</code></pre>
-      <p>Создавайте сертификат на новом сервере. При замене сертификата на действующем VPS обновите <code>server.crt</code> на клиентах, иначе проверка TLS перестанет проходить. <code>proxy.internal</code> используется как имя в сертификате, поэтому создавать DNS-запись для него не требуется.</p>
+      <p>TLS шифрует подключение и проверяет, что sing-box связался с вашим сервером. Для проверки нужен сертификат — файл <code>server.crt</code>. Если вы замените его на сервере, обновите профили на устройствах. <code>proxy.internal</code> — имя внутри сертификата. Регистрировать его как имя сайта не нужно.</p>
       <h3>Настройте службу</h3>
-      <p>Выполните <code>nano /etc/hysteria/config.yaml</code>, вставьте конфигурацию и замените значения паролей. В nano сохраните файл сочетанием <kbd>Ctrl</kbd>+<kbd>O</kbd>, затем нажмите <kbd>Enter</kbd> и <kbd>Ctrl</kbd>+<kbd>X</kbd>.</p>
+      <p>Выполните <code>nano /etc/hysteria/config.yaml</code>. Откроется nano — редактор текста в терминале. Вставьте настройки из блока ниже и подставьте свои пароли. В nano сохраните файл сочетанием <kbd>Ctrl</kbd>+<kbd>O</kbd>, затем нажмите <kbd>Enter</kbd> и <kbd>Ctrl</kbd>+<kbd>X</kbd>.</p>
       <pre><code>listen: :443
 
 tls:
@@ -105,7 +102,7 @@ chmod 640 /etc/hysteria/config.yaml /etc/hysteria/server.key
 chown root:root /etc/hysteria/server.crt
 chmod 644 /etc/hysteria/server.crt</code></pre>
       <h3>Откройте порты и запустите сервер</h3>
-      <p>Добавьте правила в UFW и, если есть отдельный экран в панели хостинга, там тоже. Перед включением UFW убедитесь, что разрешили фактический порт SSH. Здесь используется стандартный TCP 22.</p>
+      <p>UFW — программа, которая решает, какие подключения пускать на сервер. Добавьте правила в UFW и, если есть отдельный экран в панели хостинга, там тоже. Перед включением UFW убедитесь, что разрешили фактический порт SSH. Обычно для SSH нужен TCP 22 — соединение через вход под номером 22.</p>
       <pre><code>ufw allow 22/tcp
 ufw allow 443/udp
 ufw enable
@@ -114,12 +111,12 @@ systemctl enable hysteria-server
 systemctl restart hysteria-server
 systemctl status hysteria-server --no-pager
 ss -lunp 'sport = :443'</code></pre>
-      <p>Ожидаемый результат — <code>active (running)</code> и UDP-сокет на порту 443. Проверьте вход SSH из второго терминала и затем завершите первую сессию командой <code>exit</code>.</p>
+      <p>Строка <code>active (running)</code> означает, что программа запущена. Последняя команда должна показать, что она принимает подключения на порту 443. Проверьте вход SSH из второго терминала и затем завершите первую сессию командой <code>exit</code>.</p>
     </section>
 
     <section id="client">
-      <h2>Клиент sing-box</h2>
-      <p>Установите актуальную стабильную версию sing-box. Шаблон использует формат DNS, доступный с версии 1.12. Примеры ниже проверены командой <code>sing-box check</code> в версии 1.14.4.</p>
+      <h2>Установите sing-box на своё устройство</h2>
+      <p>Выберите свою систему вверху страницы и следуйте шагам ниже. Для этих настроек нужна версия sing-box 1.12 или новее.</p>
       <div data-os="linux">
         <h3>Linux</h3>
         <p>Для Debian, Ubuntu, Fedora и Arch Linux можно скачать официальный установщик. Откройте скрипт через <code>less</code>, проверьте содержимое и нажмите <kbd>Q</kbd> перед запуском. Для других способов установки выберите свой дистрибутив в документации. <a href="https://sing-box.sagernet.org/installation/package-manager/">Установка sing-box</a>.</p>
@@ -130,42 +127,54 @@ sing-box version</code></pre>
       </div>
       <div data-os="macos">
         <h3>macOS</h3>
-        <p>Если установлен Homebrew, воспользуйтесь им. Архивы для Apple Silicon и Intel также есть на странице релизов. <a href="https://github.com/SagerNet/sing-box/releases">Релизы sing-box</a>.</p>
+        <p>Homebrew устанавливает программы через Терминал и умеет запускать sing-box в фоне. Если команда <code>brew</code> ещё не работает, сначала пройдите шаги на <a href="https://brew.sh/">официальной странице Homebrew</a>. Затем выполните две строки ниже.</p>
         <pre><code>brew install sing-box
 sing-box version</code></pre>
       </div>
       <div data-os="windows">
-        <h3>Windows · PowerShell</h3>
-        <p>Установите через WinGet. Если он недоступен, скачайте архив Windows для своей архитектуры, распакуйте и поместите <code>sing-box.exe</code> рядом с будущим <code>config.json</code>. Для архива используйте <code>.\sing-box.exe</code> вместо <code>sing-box</code> во всех командах. <a href="https://github.com/SagerNet/sing-box/releases">Релизы sing-box</a>.</p>
-        <pre><code>winget install sing-box
-sing-box version</code></pre>
+        <h3>Windows</h3>
+        <p>Скачайте ZIP для Windows со <a href="https://github.com/SagerNet/sing-box/releases">страницы релизов</a>. Для большинства ПК подойдёт <code>windows-amd64</code>, для Windows на ARM — <code>windows-arm64</code>. В Проводнике нажмите «Извлечь всё» и положите <code>sing-box.exe</code> непосредственно в «Загрузки».</p>
       </div>
-      <h3>Скачайте публичный сертификат</h3>
-      <p>В локальном терминале подставьте адрес VPS. Если SSH настроен с отдельным ключом, добавьте <code>-i ПУТЬ_К_КЛЮЧУ</code> после <code>scp</code>. При входе под обычным пользователем подставьте его имя вместо <code>root</code>. Приватный <code>server.key</code> остаётся на VPS.</p>
-      <div data-os="linux macos"><h4>Linux и macOS</h4><pre><code>mkdir -p "$HOME/.config/sing-box"
-cd "$HOME/.config/sing-box"
-scp root@SERVER_IP:/etc/hysteria/server.crt ./server.crt</code></pre></div>
-      <div data-os="windows"><h4>Windows · PowerShell</h4><pre><code>New-Item -ItemType Directory -Force "$HOME\sing-box" | Out-Null
-Set-Location "$HOME\sing-box"
-scp root@SERVER_IP:/etc/hysteria/server.crt ./server.crt</code></pre></div>
+      <div id="android-import" data-os="android">
+        <h3>Android</h3>
+        <p>Установите <a href="https://sing-box.sagernet.org/clients/android/">официальное приложение sing-box for Android</a>. Если у вас уже есть рабочий файл настроек для Android с расширением <code>.json</code>, перенесите его на телефон, например по USB, в папку «Загрузки». Это файл с паролями. Если он получен от другого человека, используйте только файл от того, кому доверяете.</p>
+        <p>Если файл уже есть, перейдите к <a href="#android-run">импорту профиля</a>. Если его нет, создайте ниже на компьютере отдельный профиль для Android и перенесите его на телефон.</p>
+      </div>
+      <div id="ios-import" data-os="ios">
+        <h3>iPhone и iPad</h3>
+        <p>Установите <a href="https://apps.apple.com/app/sing-box-mt/id6785326793">sing-box MT из App Store</a>. Если приложение недоступно, проверьте, доступно ли оно для региона вашей учётной записи Apple.</p>
+        <p>Если у вас уже есть готовый файл настроек для iPhone или iPad, сохраните его в приложении «Файлы» и перейдите к <a href="#ios-run">импорту профиля</a>. Если файла пока нет, выберите «iPhone и iPad» вверху статьи и скачайте <code>config.json</code> через генератор ниже. Можно сделать это на телефоне или переслать файл с Mac на своё устройство через AirDrop. Это файл с паролями, поэтому передавайте его только на нужное устройство.</p>
+      </div>
+      <h3>Получите сертификат для нового профиля</h3>
+      <p>Сертификат позволяет приложению узнать именно ваш сервер. На компьютере откройте Терминал или PowerShell. В следующей команде замените <code>SERVER_IP</code> на адрес из панели хостинга. Если при настройке входили под другим именем, замените и <code>root</code>.</p>
+      <pre><code>ssh root@SERVER_IP "cat /etc/hysteria/server.crt"</code></pre>
+      <p>Скопируйте вывод от строки <code>-----BEGIN CERTIFICATE-----</code> до <code>-----END CERTIFICATE-----</code> включительно. Это публичная часть сертификата. Файл <code>server.key</code> содержит закрытый ключ и остаётся на сервере.</p>
     </section>
 
     <section id="config" aria-labelledby="config-heading">
-      <h2 id="config-heading">Конфигурация клиента</h2>
-      <p>Сохраните результат как <code>config.json</code> в той же папке, что и <code>server.crt</code>. Одинаковый JSON подходит для трёх ОС: имя интерфейса TUN выбирается автоматически.</p>
+      <h2 id="config-heading">Сохраните файл настроек</h2>
+      <p>Введите адрес из панели хостинга, два пароля, которые вы задали на сервере, и скопированный сертификат. Создайте результат отдельно для каждой системы, используя кнопки вверху. Профиль — это один набор настроек подключения. Для Android, iPhone и iPad генератор подставит параметры для выбранного устройства.</p>
       <form class="generator" id="generator" autocomplete="off" aria-label="Генератор полного config.json" hidden>
         <div class="fields">
           <label for="server">IPv4 сервера<input id="server" data-field="server" placeholder="203.0.113.10" inputmode="decimal" spellcheck="false"></label>
           <label for="auth">Пароль авторизации<input id="auth" data-field="auth" type="password" placeholder="AUTH_PASSWORD" autocomplete="new-password"></label>
           <label for="obfs">Пароль Salamander<input id="obfs" data-field="obfs" type="password" placeholder="OBFS_PASSWORD" autocomplete="new-password"></label>
         </div>
-        <p>Поля можно оставить пустыми и заменить подстановки в сохранённом файле. Введённые значения обрабатываются только на этой странице.</p>
-        <label><input id="bypass" type="checkbox" checked> Открывать домены .ru, .su и .рф напрямую</label>
-        <label><input id="block-quic" type="checkbox"> Отклонять UDP 80/443 приложений, кроме трафика, уже направленного напрямую</label>
-        <p>Блокировка UDP может заставить браузер перейти с HTTP/3 на TCP. Он также может повлиять на другие приложения, использующие эти UDP-порты. Само подключение к Hysteria 2 использует UDP 443.</p>
+        <label for="certificate">Сертификат сервера<textarea id="certificate" data-field="certificate" rows="5" spellcheck="false" placeholder="-----BEGIN CERTIFICATE-----"></textarea></label>
+        <p>Всё, что вы вводите, обрабатывается в браузере. Сохранённый файл содержит пароли. Храните его у себя и передавайте на телефон как личный файл.</p>
+        <details>
+          <summary>Дополнительные настройки подключения</summary>
+          <label><input id="bypass" type="checkbox" checked> Открывать сайты на .ru, .su и .рф как обычно</label>
+          <p>С этой галочкой сайты в этих зонах по возможности открываются через вашего обычного провайдера. Снимите её, если хотите отправлять и их через сервер.</p>
+          <label><input id="block-quic" type="checkbox"> Если сайты через прокси зависают, попробовать другой способ загрузки</label>
+          <p>Начните с выключенной галочки. Если некоторые сайты через сервер долго висят на загрузке, включите её для проверки. Многие браузеры тогда попробуют загрузить сайт другим способом. Некоторые игры, звонки или приложения могут перестать работать. Если это случилось, снимите галочку и сохраните файл заново. Соединение sing-box с сервером продолжит работать тем же способом.</p>
+        </details>
         <label for="config-output">Содержимое config.json</label>
         <textarea id="config-output" rows="12" readonly spellcheck="false"></textarea>
-        <button id="copy-config" type="button">Копировать полный config.json</button>
+        <div class="form-actions">
+          <button id="copy-config" class="copy-button" type="button" aria-label="Копировать полный config.json"></button>
+          <button id="download-config" type="button">Скачать config.json</button>
+        </div>
         <span class="status" role="status"></span>
       </form>
       <details id="template">
@@ -282,69 +291,130 @@ scp root@SERVER_IP:/etc/hysteria/server.crt ./server.crt</code></pre></div>
 }</code></pre>
 </details>
 
-      <p class="note">В шаблоне sing-box использует локальный DNS для доменов прямого маршрута. Для остальных запросов A и AAAA он выдаёт временные адреса FakeIP и восстанавливает исходный домен при подключении. Другие DNS-запросы по умолчанию идут через прокси. Раздельная маршрутизация зависит от того, видит ли sing-box домен. Собственный DNS в приложении, кеш или обращение по IP могут повлиять на выбор маршрута.</p>
     </section>
 
     <section id="run">
       <h2>Запуск и проверка</h2>
-      <p>Остановите другой VPN, если он тоже управляет TUN. Перейдите в папку конфигурации перед запуском — от неё отсчитывается путь к <code>server.crt</code>. Для создания TUN нужны права администратора.</p>
-      <div data-os="linux macos"><h3>Linux и macOS</h3><pre><code>cd "$HOME/.config/sing-box"
-chmod 600 config.json
-sing-box check -c config.json
-sudo "$(command -v sing-box)" run -c config.json</code></pre></div>
-      <div data-os="windows"><h3>Windows · PowerShell от имени администратора</h3><pre><code>Set-Location "$HOME\sing-box"
-sing-box check -c config.json
-sing-box run -c config.json</code></pre></div>
-      <p>Оставьте терминал открытым. Чтобы остановить прокси, нажмите <kbd>Ctrl</kbd>+<kbd>C</kbd>. При следующем запуске снова перейдите в папку и выполните команду <code>run</code>.</p>
-      <p>Сравните внешний IP до и после запуска на сайте вне доменов прямого маршрута. После запуска он должен совпадать с адресом выхода VPS. Отдельно откройте домен с суффиксом <code>.ru</code> и посмотрите в журнале клиента, выбрался ли исходящий маршрут <code>direct</code>. <a href="https://ipinfo.io/">Проверить внешний IP</a>.</p>
+      <p>Перед запуском отключите другой VPN. На телефоне или планшете sing-box использует системную функцию VPN, чтобы направлять интернет-подключения приложений через сервер. На компьютере выполните команды для своей системы один раз. Они включат sing-box сразу и настроят запуск после перезагрузки. Команды ниже предполагают, что скачанный файл называется <code>config.json</code> и находится в «Загрузках».</p>
+      <div data-os="linux">
+        <h3>Linux · systemd</h3>
+        <p>systemd — часть Linux, которая запускает программы в фоне. Команды рассчитаны на установку sing-box со службой systemd. Откройте Терминал. Выполняйте строки по очереди. Если проверка файла выдаст ошибку, исправьте её до запуска.</p>
+        <pre><code>sudo install -d -m 755 /etc/sing-box
+sudo install -m 600 "$HOME/Downloads/config.json" /etc/sing-box/config.json
+sudo sing-box check -c /etc/sing-box/config.json
+sudo systemctl enable --now sing-box
+sudo systemctl restart sing-box
+systemctl status sing-box --no-pager</code></pre>
+        <p>Статус <code>active (running)</code> означает, что программа запущена. Если «Загрузки» называются иначе, переместите файл в <code>Downloads</code> или исправьте путь в команде.</p>
+      </div>
+      <div data-os="macos">
+        <h3>macOS · фоновая служба Homebrew</h3>
+        <p>Откройте Терминал. Команды используют Homebrew, установленный на предыдущем шаге. При запросе пароля Mac вводите его вслепую и нажмите Enter. Если проверка файла выдаст ошибку, сначала исправьте её.</p>
+        <pre><code>BREW_DIR="$(brew --prefix)"
+sudo install -d -m 755 "$BREW_DIR/etc/sing-box" "$BREW_DIR/var/lib/sing-box"
+sudo install -m 600 "$HOME/Downloads/config.json" "$BREW_DIR/etc/sing-box/config.json"
+sudo "$BREW_DIR/bin/sing-box" check -c "$BREW_DIR/etc/sing-box/config.json"
+sudo "$BREW_DIR/bin/brew" services restart sing-box
+sudo "$BREW_DIR/bin/brew" services info sing-box</code></pre>
+        <p>Homebrew зарегистрирует системную службу macOS. Терминал после проверки можно закрыть.</p>
+      </div>
+      <div data-os="windows">
+        <h3>Windows · Планировщик заданий</h3>
+        <p>Нажмите «Пуск», найдите PowerShell и выберите «Запуск от имени администратора». Сначала скопируйте два файла из «Загрузок» в системную папку и проверьте настройки.</p>
+        <pre><code>$dir = "$env:ProgramFiles\sing-box"
+New-Item -ItemType Directory -Force $dir | Out-Null
+icacls $dir /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F'
+Copy-Item "$HOME\Downloads\sing-box.exe","$HOME\Downloads\config.json" -Destination $dir
+&amp; "$dir\sing-box.exe" check -c "$dir\config.json"</code></pre>
+        <p>Если в последней команде нет ошибки, зарегистрируйте и запустите задание. Оно будет включать программу в фоне при запуске Windows, даже до входа в аккаунт.</p>
+        <pre><code>$action = New-ScheduledTaskAction -Execute "$dir\sing-box.exe" -Argument 'run -c config.json' -WorkingDirectory $dir
+$trigger = New-ScheduledTaskTrigger -AtStartup
+$settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)
+Register-ScheduledTask -TaskName 'sing-box' -Action $action -Trigger $trigger -Settings $settings -User 'SYSTEM' -RunLevel Highest -Force
+Start-ScheduledTask -TaskName 'sing-box'
+Get-ScheduledTask -TaskName 'sing-box'</code></pre>
+        <p>Состояние <code>Running</code> означает, что задание работает. Окно PowerShell можно закрыть.</p>
+      </div>
+      <div id="android-run" data-os="android">
+        <h3>Android · импорт профиля</h3>
+        <ol>
+          <li>Откройте sing-box и перейдите в <strong>Profiles</strong> («Профили»). Нажмите <strong>+</strong> и выберите импорт из файла. Если версия приложения сначала предлагает тип профиля, выберите <strong>Local</strong> и укажите файл из «Загрузок».</li>
+          <li>Назовите профиль, например «Мой прокси». На главном экране выберите его и нажмите кнопку запуска. В системном окне Android подтвердите запрос на VPN-подключение.</li>
+          <li>Если хотите, чтобы Android сам поднимал подключение, найдите в системных настройках «VPN». Нажмите шестерёнку рядом с sing-box и включите «Постоянный VPN», если пункт доступен. Сначала проверьте обычное подключение и оставьте «Блокировать подключения без VPN» выключенным.</li>
+        </ol>
+      </div>
+      <div id="ios-run" data-os="ios">
+        <h3>iPhone и iPad · импорт профиля</h3>
+        <ol>
+          <li>Убедитесь, что <code>config.json</code> виден в приложении «Файлы». Скачанное через Safari обычно находится в папке «Загрузки».</li>
+          <li>В sing-box откройте <strong>Profiles</strong> («Профили»), нажмите <strong>+</strong> и создайте профиль <strong>Local</strong> («Локальный»). В параметрах профиля выберите импорт из файла, укажите <code>config.json</code> и сохраните профиль. Назовите его, например, «Мой прокси».</li>
+          <li>На главном экране sing-box выберите этот профиль и включите подключение. Когда iPhone или iPad попросит разрешить добавление настроек VPN, нажмите «Разрешить» и подтвердите действие кодом устройства, если система его запросит.</li>
+          <li>После проверки можно включить <strong>Always On</strong>, если этот переключатель есть в приложении. Он нужен, чтобы sing-box автоматически восстанавливал подключение.</li>
+        </ol>
+      </div>
+      <h3>Проверьте, какой адрес видят сайты</h3>
+      <div data-os="linux macos windows">
+        <p>Откройте Терминал или PowerShell и выполните команду. <code>curl</code> запрашивает страницу, а <code>ifconfig.me</code> в ответ показывает ваш адрес. В Windows, если <code>curl</code> не сработал, введите <code>curl.exe ifconfig.me</code>.</p>
+        <pre><code>curl ifconfig.me</code></pre>
+        <p>Выполните команду с выключенным и включённым sing-box. С включённым прокси должен появиться внешний адрес вашего сервера.</p>
+      </div>
+      <p data-os="android ios">На телефоне или планшете откройте <a href="https://ifconfig.me/">ifconfig.me</a> в браузере. Посмотрите адрес с выключенным и включённым sing-box. С включённым прокси должен появиться внешний адрес сервера. Повторите через Wi‑Fi и, если на устройстве есть мобильный интернет, через мобильную сеть.</p>
     </section>
 
     <section id="maintenance">
       <h2>Диагностика и перенос VPS</h2>
+      <details><summary>Что делать, если не подключается</summary>
       <dl>
         <dt>Тайм-аут или ошибка QUIC</dt><dd>Проверьте IPv4, состояние службы и правила для UDP 443 на сервере и у хостера. Сверьте пароль Salamander с конфигурацией клиента. Проверьте, проходит ли UDP из клиентской сети.</dd>
         <dt>Ошибка авторизации</dt><dd>Сверьте <code>auth.password</code> на сервере с <code>password</code> в исходящем подключении клиента.</dd>
-        <dt>Ошибка <code>x509</code></dt><dd>Проверьте срок действия сертификата, имя <code>proxy.internal</code>, время на обоих устройствах и наличие актуального файла <code>server.crt</code> рядом с JSON.</dd>
-        <dt>Ошибка TUN или пропал интернет</dt><dd>Остановите клиент, проверьте права администратора и отключите второй VPN. В Windows параметр <code>strict_route</code> может влиять на работу приложений вроде VirtualBox. Подробности ограничений есть в документации. <a href="https://sing-box.sagernet.org/configuration/inbound/tun/">Параметры TUN</a>.</dd>
+        <dt>Ошибка <code>x509</code></dt><dd>Так обозначается ошибка проверки сертификата. Проверьте срок действия сертификата, имя <code>proxy.internal</code>, время на обоих устройствах и наличие актуального файла <code>server.crt</code> рядом с JSON.</dd>
+        <dt>Ошибка TUN или пропал интернет</dt><dd>TUN — виртуальное сетевое подключение, через которое sing-box принимает трафик. Остановите клиент, проверьте права администратора и отключите второй VPN. В Windows параметр <code>strict_route</code> может влиять на работу приложений вроде VirtualBox. Подробности ограничений есть в документации. <a href="https://sing-box.sagernet.org/configuration/inbound/tun/">Параметры TUN</a>.</dd>
         <dt>Ошибка <code>unknown field</code></dt><dd>Проверьте версию клиента и повторите <code>sing-box check -c config.json</code> в папке конфигурации.</dd>
       </dl>
       <pre><code>systemctl status hysteria-server --no-pager
 ss -lunp 'sport = :443'
 journalctl -u hysteria-server -n 50 --no-pager</code></pre>
+      <h3>Как понять, где произошла ошибка</h3>
+      <ol>
+        <li>Попробуйте открыть сайт с отключённым sing-box. Если сайт всё равно не открывается, сначала проверьте интернет. На телефоне переключитесь с Wi‑Fi на мобильную сеть.</li>
+        <li>Если sing-box сразу выключается, откройте журнал. На Android журнал есть в приложении, на iPhone и iPad — в <strong>Settings → View Service Log</strong>, на Linux — по команде <code>sudo journalctl -u sing-box -n 40 --no-pager</code>. На macOS проверьте службу через <code>sudo brew services info sing-box</code>, на Windows посмотрите состояние и результат задания в Планировщике. Повторите команду <code>check</code> из инструкции установки.</li>
+        <li>Если приложение показывает <code>timeout</code>, перепроверьте адрес в панели хостинга и запуск Hysteria командой ниже. Если всё работает только в одной сети, вероятно, другая сеть мешает этому типу подключения.</li>
+        <li>Если в журнале <code>x509</code>, заново скопируйте публичный сертификат с сервера и пересоздайте профиль. Если приложение сообщает об ошибке JSON, скачайте новый файл через генератор и убедитесь, что его имя заканчивается на <code>.json</code>.</li>
+        <li>Если на Android после остановки пропал интернет, проверьте системный пункт «Блокировать подключения без VPN» и отключите его для диагностики. Проверьте, что другой VPN выключен и у sing-box нет списка, который исключает нужное приложение.</li>
+      </ol>
+      <h3>Как временно отключить sing-box</h3>
+      <p data-os="linux">В Терминале выполните <code>sudo systemctl stop sing-box</code>. Автозапуск останется включён. Чтобы вернуть прокси сразу, выполните <code>sudo systemctl start sing-box</code>.</p>
+      <p data-os="macos">Выполните <code>sudo brew services stop sing-box</code>. Это также выключит автозапуск. Чтобы снова включить и прокси, и автозапуск, выполните <code>sudo brew services start sing-box</code>.</p>
+      <p data-os="windows">В Планировщике заданий выберите задание <code>sing-box</code> и нажмите «Завершить». Чтобы запустить снова, нажмите «Выполнить». Если нужно отменить и запуск при включении ПК, нажмите «Отключить».</p>
+      <p data-os="ios">Выключите подключение на главном экране sing-box. Если оно включается снова, выключите <strong>Always On</strong> в приложении.</p>
+      <p data-os="android">Нажмите кнопку остановки в sing-box. Если включали «Постоянный VPN», отключите его в системных настройках VPN.</p>
+      </details>
+      <details><summary>Перенос VPS и дополнительные устройства</summary>
       <h3>Перенос сервера</h3>
       <p>Сохраните зашифрованную копию <code>/etc/hysteria/config.yaml</code>, <code>server.crt</code> и <code>server.key</code>. На новом VPS установите Hysteria 2, восстановите файлы и права, откройте UDP 443 и запустите службу. Если сертификат остаётся действующим, а порт и пароли те же, на каждом клиенте достаточно заменить адрес в <code>server</code>. Проверьте новый сервер с одного клиента, прежде чем завершать работу старого.</p>
       <div id="connection-generator" hidden>
         <h3 id="connection-heading">Блок подключения для существующего конфига</h3>
-        <p>При переносе VPS замените объект с тегом <code>hy2</code> в массиве <code>outbounds</code>. Оставьте <code>proxy.internal</code>, если перенесли сертификат из этой статьи. Другое имя должно совпадать с именем в сертификате. Держите актуальный <code>server.crt</code> рядом с конфигом.</p>
+        <p>При переносе VPS воспользуйтесь полным генератором выше. Этот блок пригодится, если вы уже редактируете настройки вручную: перенесите только изменившиеся поля в объект с тегом <code>hy2</code>. Оставьте <code>proxy.internal</code>, если перенесли сертификат из этой статьи. Другое имя должно совпадать с именем в сертификате. Сохраните проверку сертификата и используйте актуальный сертификат сервера.</p>
         <form class="generator" autocomplete="off" aria-labelledby="connection-heading">
           <div class="fields">
             <label for="connection-server">IP или домен VPS<input id="connection-server" data-field="server" placeholder="203.0.113.10" spellcheck="false"></label>
             <label for="connection-port">Порт<input id="connection-port" data-field="port" type="number" min="1" max="65535" step="1" value="443"></label>
             <label for="connection-auth">Пароль авторизации<input id="connection-auth" data-field="auth" type="password" placeholder="AUTH_PASSWORD" autocomplete="new-password"></label>
             <label for="connection-obfs">Пароль Salamander<input id="connection-obfs" data-field="obfs" type="password" placeholder="OBFS_PASSWORD" autocomplete="new-password"></label>
-            <label for="connection-sni">Имя TLS (SNI)<input id="connection-sni" data-field="sni" placeholder="proxy.internal" spellcheck="false"></label>
+            <label for="connection-sni">Имя сервера из сертификата (SNI)<input id="connection-sni" data-field="sni" placeholder="proxy.internal" spellcheck="false"></label>
           </div>
           <label for="connection-output">Блок подключения JSON</label>
           <textarea id="connection-output" rows="10" readonly spellcheck="false"></textarea>
-          <button type="button">Копировать блок JSON</button>
+          <button class="copy-button" type="button" aria-label="Копировать блок JSON"></button>
           <span class="status" role="status"></span>
         </form>
       </div>
       <h3>Дополнительные устройства</h3>
-      <p>Установите sing-box на каждом устройстве и перенесите <code>config.json</code> и публичный <code>server.crt</code> защищённым способом. Лимит трафика VPS общий для всех устройств.</p>
+      <p>Установите sing-box на каждом устройстве и выберите систему в генераторе и сохраните профиль для нового устройства. Все устройства расходуют один общий запас гигабайт по тарифу сервера.</p>
+      </details>
     </section>
 
   </article>
 </main>
-<footer class="article">
-  <h2>Документация</h2>
-  <ul>
-    <li><a href="https://v2.hysteria.network/docs/getting-started/Server-Installation-Script/">Hysteria 2 · установка сервера</a></li>
-    <li><a href="https://v2.hysteria.network/docs/advanced/Full-Server-Config/">Hysteria 2 · конфигурация сервера</a></li>
-    <li><a href="https://sing-box.sagernet.org/configuration/outbound/hysteria2/">sing-box · Hysteria 2</a></li>
-    <li><a href="https://sing-box.sagernet.org/configuration/shared/tls/">sing-box · TLS</a></li>
-    <li><a href="https://sing-box.sagernet.org/configuration/dns/server/fakeip/">sing-box · FakeIP</a></li>
-  </ul>
-</footer>
 </body>
 </html>
